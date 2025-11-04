@@ -337,7 +337,23 @@ terraform output -json > outputs.json
 
 After Terraform creates the infrastructure, deploy your Python code:
 
-#### Option 1: Using Azure Functions Core Tools
+#### Option 1: Using Visual Studio Code
+
+1. **Install the Azure Functions extension** in VSCode if you haven't already
+2. **Open the function_app folder** in VSCode
+3. **Sign in to Azure**:
+   - Click on the Azure icon in the sidebar
+   - Sign in to your Azure account
+4. **Deploy**:
+   - Right-click on the function_app folder in the Explorer
+   - Select "Deploy to Function App..."
+   - Choose your subscription
+   - Select the Function App created by Terraform (check the name with `terraform output function_app_name`)
+   - Confirm the deployment
+
+The extension will package and deploy your code automatically.
+
+#### Option 2: Using Azure Functions Core Tools
 
 ```bash
 # Navigate to your function code directory
@@ -359,7 +375,7 @@ func azure functionapp publish $FUNCTION_APP_NAME --python
 # Deployment completed successfully.
 ```
 
-#### Option 2: Using Azure CLI
+#### Option 3: Using Azure CLI
 
 ```bash
 # Get function app name and resource group
