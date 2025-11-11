@@ -345,7 +345,7 @@ resource "azapi_resource" "function_app" {
       }
 
       siteConfig = {
-        vnetRouteAllEnabled = false
+        vnetRouteAllEnabled = true
         cors = {
           allowedOrigins = ["https://portal.azure.com"]
           supportCredentials = false
@@ -411,7 +411,7 @@ resource "azapi_update_resource" "function_app_settings" {
           },
           {
             name  = "SAS_EXPIRY_HOURS"
-            value = "72"
+            value = "168"
           },
           {
             name  = "ONLY_LATEST_FILE"

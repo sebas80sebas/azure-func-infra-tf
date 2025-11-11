@@ -12,7 +12,7 @@ import json
 # Configuration from environment variables (Azure Functions)
 CONTAINER_NAME = os.getenv('AZURE_CONTAINER_NAME', 'metrics')
 TEAMS_WEBHOOK_URL = os.getenv('TEAMS_WEBHOOK_URL', '')
-SAS_EXPIRY_HOURS = int(os.getenv('SAS_EXPIRY_HOURS', '72'))  # Token valid for 72 hours (3 days)
+SAS_EXPIRY_HOURS = int(os.getenv('SAS_EXPIRY_HOURS', '168'))  # Token valid for 168 hours (7 days)
 ONLY_LATEST_FILE = os.getenv('ONLY_LATEST_FILE', 'true').lower() == 'true'  # Show only the latest Excel file
 
 
