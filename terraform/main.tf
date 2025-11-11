@@ -18,6 +18,10 @@ provider "azurerm" {
     resource_group {
       prevent_deletion_if_contains_resources = false
     }
+    key_vault {
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
   }
 }
 
@@ -54,6 +58,12 @@ variable "function_app_name" {
   default     = "func-zabbix-exporter"
 }
 
+variable "key_vault_name" {
+  description = "Key Vault name (must be globally unique)"
+  type        = string
+  default     = "kv-zabbix-exporter"
+}
+
 variable "zabbix_url" {
   description = "Zabbix API URL"
   type        = string
@@ -77,6 +87,9 @@ variable "teams_webhook_url" {
   type        = string
   sensitive   = true
 }
+
+# Data source para obtener el tenant actual
+data "azurerm_client_config" "current" {}
 
 # Resource Group
 resource "azurerm_resource_group" "main" {
@@ -106,7 +119,7 @@ resource "azurerm_subnet" "functions" {
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.1.0/24"]
-  service_endpoints    = ["Microsoft.Storage"]
+  service_endpoints    = ["Microsoft.Storage", "Microsoft.KeyVault"]
 
   delegation {
     name = "delegation"
@@ -196,6 +209,93 @@ resource "azurerm_application_insights" "main" {
   application_type    = "web"
 }
 
+# Key Vault
+resource "azurerm_key_vault" "main" {
+  name                       = var.key_vault_name
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
+
+  # Habilitar acceso desde la subnet de functions
+  network_acls {
+    bypass                     = "AzureServices"
+    default_action             = "Allow"
+    virtual_network_subnet_ids = [azurerm_subnet.functions.id]
+  }
+}
+
+# Key Vault Access Policy para el usuario que ejecuta Terraform
+resource "azurerm_key_vault_access_policy" "terraform" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  secret_permissions = [
+    "Get",
+    "List",
+    "Set",
+    "Delete",
+    "Purge",
+    "Recover"
+  ]
+}
+
+# Key Vault Access Policy para la Managed Identity
+resource "azurerm_key_vault_access_policy" "function_app" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = azurerm_user_assigned_identity.main.principal_id
+
+  secret_permissions = [
+    "Get",
+    "List"
+  ]
+}
+
+# Secrets en Key Vault
+resource "azurerm_key_vault_secret" "zabbix_url" {
+  name         = "ZABBIX-URL"
+  value        = var.zabbix_url
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.terraform]
+}
+
+resource "azurerm_key_vault_secret" "zabbix_user" {
+  name         = "ZABBIX-USER"
+  value        = var.zabbix_user
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.terraform]
+}
+
+resource "azurerm_key_vault_secret" "zabbix_password" {
+  name         = "ZABBIX-PASSWORD"
+  value        = var.zabbix_password
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.terraform]
+}
+
+resource "azurerm_key_vault_secret" "teams_webhook_url" {
+  name         = "TEAMS-WEBHOOK-URL"
+  value        = var.teams_webhook_url
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.terraform]
+}
+
+resource "azurerm_key_vault_secret" "storage_connection" {
+  name         = "AZURE-STORAGE-CONNECTION-STRING"
+  value        = azurerm_storage_account.main.primary_connection_string
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.terraform]
+}
+
 # Service Plan (Flex Consumption)
 resource "azurerm_service_plan" "main" {
   name                = "asp-${var.function_app_name}"
@@ -245,7 +345,7 @@ resource "azapi_resource" "function_app" {
       }
 
       siteConfig = {
-        vnetRouteAllEnabled = true
+        vnetRouteAllEnabled = false
         cors = {
           allowedOrigins = ["https://portal.azure.com"]
           supportCredentials = false
@@ -253,8 +353,8 @@ resource "azapi_resource" "function_app" {
       }
 
       virtualNetworkSubnetId = azurerm_subnet.functions.id
-
       publicNetworkAccess = "Enabled"
+      keyVaultReferenceIdentity = azurerm_user_assigned_identity.main.id
     }
   }
 
@@ -263,11 +363,12 @@ resource "azapi_resource" "function_app" {
   depends_on = [
     azurerm_role_assignment.storage_blob_owner,
     azurerm_storage_container.webjobs_hosts,
-    azurerm_storage_container.webjobs_secrets
+    azurerm_storage_container.webjobs_secrets,
+    azurerm_key_vault_access_policy.function_app
   ]
 }
 
-# App Settings - IMPORTANTE: Cambiar de azapi_resource a azapi_update_resource
+# App Settings con referencias a Key Vault
 resource "azapi_update_resource" "function_app_settings" {
   type        = "Microsoft.Web/sites@2023-12-01"
   resource_id = azapi_resource.function_app.id
@@ -290,23 +391,23 @@ resource "azapi_update_resource" "function_app_settings" {
           },
           {
             name  = "TEAMS_WEBHOOK_URL"
-            value = var.teams_webhook_url
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.teams_webhook_url.versionless_id})"
           },
           {
             name  = "AZURE_STORAGE_CONNECTION_STRING"
-            value = azurerm_storage_account.main.primary_connection_string
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.storage_connection.versionless_id})"
           },
           {
             name  = "ZABBIX_URL"
-            value = var.zabbix_url
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_url.versionless_id})"
           },
           {
             name  = "ZABBIX_USER"
-            value = var.zabbix_user
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_user.versionless_id})"
           },
           {
             name  = "ZABBIX_PASSWORD"
-            value = var.zabbix_password
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_password.versionless_id})"
           },
           {
             name  = "SAS_EXPIRY_HOURS"
@@ -320,15 +421,18 @@ resource "azapi_update_resource" "function_app_settings" {
             name  = "FUNCTIONS_EXTENSION_VERSION"
             value = "~4"
           }
-          # NOTA: FUNCTIONS_WORKER_RUNTIME NO se incluye porque ya está definido
-          # en functionAppConfig.runtime del recurso azapi_resource.function_app
         ]
       }
     }
   }
 
   depends_on = [
-    azapi_resource.function_app
+    azapi_resource.function_app,
+    azurerm_key_vault_secret.zabbix_url,
+    azurerm_key_vault_secret.zabbix_user,
+    azurerm_key_vault_secret.zabbix_password,
+    azurerm_key_vault_secret.teams_webhook_url,
+    azurerm_key_vault_secret.storage_connection
   ]
 }
 
@@ -369,6 +473,14 @@ output "function_app_default_hostname" {
 
 output "storage_account_name" {
   value = azurerm_storage_account.main.name
+}
+
+output "key_vault_name" {
+  value = azurerm_key_vault.main.name
+}
+
+output "key_vault_uri" {
+  value = azurerm_key_vault.main.vault_uri
 }
 
 output "application_insights_connection_string" {
