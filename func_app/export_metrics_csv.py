@@ -3,6 +3,7 @@ import csv
 import datetime
 import io
 import os
+import json
 from azure.storage.blob import BlobServiceClient
 
 # Zabbix Configuration
@@ -21,13 +22,11 @@ def zabbix_api(method, params, auth=None):
     response.raise_for_status()
     result = response.json()
     
-    # ✅ Check if there's an error in the response
     if "error" in result:
         error_msg = result["error"].get("message", "Unknown error")
         error_data = result["error"].get("data", "")
         raise Exception(f"Zabbix error: {error_msg} - {error_data}")
     
-    # ✅ Check if "result" exists
     if "result" not in result:
         raise Exception(f"Unexpected response from Zabbix: {result}")
     
@@ -55,7 +54,6 @@ def export_metrics():
     try:
         auth_token = zabbix_api("user.login", {"user": ZABBIX_USER, "password": ZABBIX_PASSWORD})
     except:
-        # Fallback for other versions
         auth_token = zabbix_api("user.login", {"username": ZABBIX_USER, "password": ZABBIX_PASSWORD})
 
     print("✅ Authentication successful")
@@ -83,13 +81,41 @@ def export_metrics():
         "vm.memory.size[total]",
     ]
 
-    hosts = zabbix_api("host.get", {"output": ["hostid", "host"]}, auth_token)
+    # Get all host groups
+    print("📁 Getting host groups...")
+    host_groups = zabbix_api("hostgroup.get", {"output": ["groupid", "name"]}, auth_token)
+    print(f"✅ Found {len(host_groups)} host groups")
+    
+    # Create mapping of host groups
+    hostgroup_data = {}
+    for group in host_groups:
+        hostgroup_data[group['groupid']] = {
+            'name': group['name'],
+            'hosts': []
+        }
+
+    # Get hosts with their groups
+    hosts = zabbix_api("host.get", {
+        "output": ["hostid", "host", "name"],
+        "selectGroups": ["groupid", "name"]
+    }, auth_token)
+    
     hosts_processed = 0
     hosts_with_data = 0
+    host_to_groups = {}
 
+    # Process each host
     for host in hosts:
         host_id = host["hostid"]
         host_name = host["host"]
+        
+        # Store host groups for this host
+        host_to_groups[host_name] = [g['name'] for g in host.get('groups', [])]
+        
+        # Add host to each group
+        for group in host.get('groups', []):
+            if group['groupid'] in hostgroup_data:
+                hostgroup_data[group['groupid']]['hosts'].append(host_name)
 
         items = zabbix_api("item.get", {
             "hostids": host_id,
@@ -102,13 +128,14 @@ def export_metrics():
 
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Metric", "Min", "Max", "Avg", "Samples"])
+        writer.writerow(["Metric", "Min", "Max", "Avg", "Samples", "Host_Groups"])
         has_data = False
 
         for item in items:
             item_id = item["itemid"]
             item_name = item["name"]
             value_type = int(item["value_type"])
+            groups_str = ";".join(host_to_groups.get(host_name, []))
 
             try:
                 trends = zabbix_api("trend.get", {
@@ -124,7 +151,7 @@ def export_metrics():
                     total_sum = sum(float(t["avg"]) * int(t["num"]) for t in trends)
                     total_count = sum(int(t["num"]) for t in trends)
                     avg_val = total_sum / total_count if total_count > 0 else 0
-                    writer.writerow([item_name, f"{min_val:.2f}", f"{max_val:.2f}", f"{avg_val:.2f}", len(trends)])
+                    writer.writerow([item_name, f"{min_val:.2f}", f"{max_val:.2f}", f"{avg_val:.2f}", len(trends), groups_str])
                     has_data = True
                     continue
             except:
@@ -150,7 +177,7 @@ def export_metrics():
                 min_val = min(values)
                 max_val = max(values)
                 avg_val = sum(values) / len(values)
-                writer.writerow([item_name, f"{min_val:.2f}", f"{max_val:.2f}", f"{avg_val:.2f}", len(values)])
+                writer.writerow([item_name, f"{min_val:.2f}", f"{max_val:.2f}", f"{avg_val:.2f}", len(values), groups_str])
                 has_data = True
             except:
                 continue
@@ -161,5 +188,16 @@ def export_metrics():
             hosts_with_data += 1
         hosts_processed += 1
 
-    print(f"🎉 Hosts processed: {hosts_processed}, Hosts with data: {hosts_with_data}")
+    # Save host groups information as JSON
+    groups_info = {
+        'groups': {gid: {'name': data['name'], 'hosts': data['hosts']} 
+                   for gid, data in hostgroup_data.items()},
+        'host_to_groups': host_to_groups,
+        'generation_date': datetime.datetime.now().isoformat()
+    }
+    
+    groups_blob = container_client.get_blob_client("_hostgroups_info.json")
+    groups_blob.upload_blob(json.dumps(groups_info, indent=2), overwrite=True)
+    print(f"✅ Host groups info saved")
 
+    print(f"🎉 Hosts processed: {hosts_processed}, Hosts with data: {hosts_with_data}")
