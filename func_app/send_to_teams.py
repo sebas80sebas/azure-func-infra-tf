@@ -165,11 +165,11 @@ def send_to_teams_workflow(
         # English message - SIMPLIFIED
         files_text = ""
         if files:
-            files_text = "\n\n**📊 Available Excel Reports:**\n\n"
+            files_text = "\n\n**Available:**\n\n"
             for i, file in enumerate(files, 1):
                 file_url = f"{container_url}/{file}?{sas_token}"
                 files_text += f"{i}. **{file}**\n"
-                files_text += f"   📥 [Download Excel File]({file_url})\n\n"
+                files_text += f"   [Download Excel File]({file_url})\n\n"
         
         full_message = f"""**📊 Zabbix Monitoring Report - Ready for Download**
 
@@ -191,11 +191,11 @@ def send_to_teams_workflow(
         # Spanish message - SIMPLIFIED
         files_text = ""
         if files:
-            files_text = "\n\n**📊 Informes Excel disponibles:**\n\n"
+            files_text = "\n\n**Disponible:**\n\n"
             for i, file in enumerate(files, 1):
                 file_url = f"{container_url}/{file}?{sas_token}"
                 files_text += f"{i}. **{file}**\n"
-                files_text += f"   📥 [Descargar archivo Excel]({file_url})\n\n"
+                files_text += f"   [Descargar archivo Excel]({file_url})\n\n"
         
         full_message = f"""**📊 Informe de Monitorización Zabbix - Listo para Descargar**
 
@@ -259,7 +259,7 @@ def main():
     
     try:
         # Generate SAS token for container
-        print("\n🔐 Generating SAS token for container...")
+        print("\nGenerating SAS token for container...")
         container_url, sas_token, expiry_time, account_name = generate_container_sas(
             connection_string=connection_string,
             container_name=CONTAINER_NAME,
