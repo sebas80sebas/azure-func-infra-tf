@@ -1,6 +1,6 @@
-# Zabbix Metrics Exporter
+# Zabbix Metrics Azure Exporter
 
-## 📋 Overview
+## Overview
 
 This project is a serverless Azure Function application that:
 1. **Exports metrics** from Zabbix monitoring system to CSV files
@@ -9,7 +9,7 @@ This project is a serverless Azure Function application that:
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 ```
 ┌─────────────────┐
 │  Azure Function │
@@ -33,7 +33,7 @@ This project is a serverless Azure Function application that:
 
 ---
 
-## 🚀 Infrastructure Deployment with Terraform
+## Infrastructure Deployment with Terraform
 
 ### Prerequisites
 
@@ -517,23 +517,23 @@ terraform init
 
 ### Best Practices
 
-✅ **Security**
+**Security**
 - Never commit `terraform.tfvars` to Git
 - Use Azure Key Vault for sensitive values (advanced setup)
 - Rotate credentials regularly
 - Enable Terraform state encryption
 
-✅ **State Management**
+**State Management**
 - Store Terraform state in Azure Storage (remote backend)
 - Enable state locking to prevent concurrent modifications
 - Regularly backup state files
 
-✅ **Code Organization**
+**Code Organization**
 - Use separate `.tfvars` files per environment (dev, staging, prod)
 - Modularize Terraform code for reusability
 - Document all variables and outputs
 
-✅ **Version Control**
+**Version Control**
 - Tag releases in Git
 - Use semantic versioning for infrastructure changes
 - Maintain a CHANGELOG.md
@@ -789,7 +789,7 @@ files = ["Zabbix_Report_20241021_143022.xlsx"]
 
 ---
 
-## 🔄 Scheduled Execution
+## Scheduled Execution
 
 The Azure Function runs automatically:
 ```python
@@ -810,7 +810,7 @@ def monthly_metrics_export(mytimer):
 
 ---
 
-## 📤 What the Application Returns
+## What the Application Returns
 
 ### For Azure Function (Logs)
 ```
@@ -851,13 +851,13 @@ metrics/
 
 ---
 
-## 🔒 Security Best Practices
+## Security Best Practices
 
-✅ **Implemented:**
+**Implemented:**
 - TLS 1.2 minimum
 - VNet integration
 - IP whitelisting
-- SAS token expiration (72h)
+- SAS token expiration (168h)
 - Private blob containers
 - Soft delete enabled (7 days)
 - Infrastructure as Code (Terraform)
@@ -865,7 +865,7 @@ metrics/
 
 ---
 
-## 📝 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -886,7 +886,7 @@ metrics/
 
 ---
 
-## 📚 Dependencies
+## Dependencies
 
 ### Terraform Providers
 ```hcl
