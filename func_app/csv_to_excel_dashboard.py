@@ -9,7 +9,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.chart import BarChart, LineChart, PieChart, Reference
 from openpyxl.utils.dataframe import dataframe_to_rows
 
-# 🎨 Colors
+# Colors
 HEADER_FILL = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 CPU_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
@@ -18,7 +18,7 @@ GROUP_HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_t
 
 
 def generate_excel():
-    # 📡 Blob connection
+    # Blob connection
     connect_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
     if not connect_str:
         raise ValueError("AZURE_STORAGE_CONNECTION_STRING is not configured")
@@ -31,21 +31,21 @@ def generate_excel():
     except:
         pass
 
-    # 📥 Load host groups info
+    # Load host groups info
     try:
         groups_blob = container_client.get_blob_client("_hostgroups_info.json")
         groups_info = json.loads(groups_blob.download_blob().content_as_text())
         host_to_groups = groups_info.get('host_to_groups', {})
         groups_data = groups_info.get('groups', {})
     except:
-        print("⚠️ No host groups info found, continuing without group data")
+        print("No host groups info found, continuing without group data")
         host_to_groups = {}
         groups_data = {}
 
     host_count = 0
     csv_data = {}
     
-    # 📥 Download CSVs
+    # Download CSVs
     for blob in container_client.list_blobs():
         if blob.name.endswith(".csv") and not blob.name.startswith("_"):
             blob_client = container_client.get_blob_client(blob.name)
@@ -53,7 +53,7 @@ def generate_excel():
             csv_data[blob.name] = pd.read_csv(stream)
             host_count += 1
 
-    # 📊 Create Excel
+    # Create Excel
     wb = Workbook()
     ws_all = wb.active
     ws_all.title = "All Hosts"
@@ -73,7 +73,7 @@ def generate_excel():
     # Data by group
     group_metrics = {}
 
-    # 📸 Fill main sheet and collect metrics
+    # Fill main sheet and collect metrics
     for csv_name, df in csv_data.items():
         host_name = csv_name.replace(".csv", "")
         groups_str = ";".join(host_to_groups.get(host_name, ["Unknown"]))
@@ -109,7 +109,7 @@ def generate_excel():
                     group_metrics[group]['mem'].append((host_name, row['Avg']))
             row_count += 1
 
-    # 📊 Main dashboard
+    # Main dashboard
     ws_dashboard = wb.create_sheet("Dashboard", 0)
     ws_dashboard['B2'] = "ZABBIX MONITORING REPORT"
     ws_dashboard['B2'].font = Font(size=16, bold=True, color="2E75B6")
@@ -131,7 +131,7 @@ def generate_excel():
         cell_label.font = Font(bold=True)
         cell_value.font = Font(size=11)
 
-    # 🧠 Top 10 CPU
+    # Top 10 CPU
     current_row = row_start + len(stats) + 2
     ws_dashboard.cell(current_row, 2, "Top 10 CPU Avg").font = Font(bold=True, size=12)
     ws_dashboard.cell(current_row, 2).fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
@@ -151,7 +151,7 @@ def generate_excel():
         elif avg > 60:
             cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
 
-    # 🧠 Top 10 Memory
+    # Top 10 Memory
     ws_dashboard.cell(current_row, 6, "Top 10 Memory Avg").font = Font(bold=True, size=12)
     ws_dashboard.cell(current_row, 6).fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
     
@@ -170,7 +170,7 @@ def generate_excel():
         elif avg > 60:
             cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
 
-    # 📊 Top 10 CPU Chart
+    # Top 10 CPU Chart
     cpu_chart = BarChart()
     cpu_chart.title = "Top 10 CPU Usage (%)"
     cpu_chart.y_axis.title = "CPU Avg (%)"
@@ -182,9 +182,9 @@ def generate_excel():
     cpu_chart.height = 10
     cpu_chart.width = 15
     cpu_chart.legend = None
-    ws_dashboard.add_chart(cpu_chart, "J5")
+    ws_dashboard.add_chart(cpu_chart, f"I{cpu_start_row - 2}")
 
-    # 📊 Top 10 Memory Chart
+    # Top 10 Memory Chart (placed just below CPU chart dynamically)
     mem_chart = BarChart()
     mem_chart.title = "Top 10 Memory Usage (%)"
     mem_chart.y_axis.title = "Memory Avg (%)"
@@ -196,7 +196,63 @@ def generate_excel():
     mem_chart.height = 10
     mem_chart.width = 15
     mem_chart.legend = None
-    ws_dashboard.add_chart(mem_chart, "J20")
+    ws_dashboard.add_chart(mem_chart, f"T{cpu_start_row - 2}")  # adds space dynamically
+
+    # HOST GROUPS CHARTS IN DASHBOARD
+    groups_chart_row = max(cpu_start_row + 20, mem_start_row + 20)
+
+    # Prepare data for host groups charts
+    group_stats = []
+    for group_name, metrics in sorted(group_metrics.items()):
+        avg_cpu = sum(avg for _, avg in metrics['cpu']) / len(metrics['cpu']) if metrics['cpu'] else 0
+        avg_mem = sum(avg for _, avg in metrics['mem']) / len(metrics['mem']) if metrics['mem'] else 0
+        group_stats.append((group_name, len(metrics['hosts']), avg_cpu, avg_mem))
+
+    if group_stats:
+        ws_dashboard.cell(groups_chart_row, 2, "METRICS BY HOST GROUP").font = Font(bold=True, size=13, color="4472C4")
+        ws_dashboard.merge_cells(f'B{groups_chart_row}:H{groups_chart_row}')
+        groups_chart_row += 2
+
+        # Headers
+        headers = ["Host Group", "Total Hosts", "Avg CPU %", "Avg Memory %"]
+        for j, header in enumerate(headers, start=2):
+            ws_dashboard.cell(groups_chart_row, j, header)
+            ws_dashboard.cell(groups_chart_row, j).fill = HEADER_FILL
+            ws_dashboard.cell(groups_chart_row, j).font = HEADER_FONT
+
+        groups_data_start = groups_chart_row + 1
+        for i, (group_name, hosts, avg_cpu, avg_mem) in enumerate(group_stats, start=groups_data_start):
+            ws_dashboard.cell(i, 2, group_name)
+            ws_dashboard.cell(i, 3, hosts)
+            ws_dashboard.cell(i, 4, avg_cpu).number_format = '0.00'
+            ws_dashboard.cell(i, 5, avg_mem).number_format = '0.00'
+        groups_data_end = groups_data_start + len(group_stats) - 1
+
+        # Charts side by side, no overlap
+        cpu_group_chart = BarChart()
+        cpu_group_chart.title = "Average CPU by Host Group"
+        cpu_group_chart.y_axis.title = "CPU Avg (%)"
+        cpu_group_chart.x_axis.title = "Host Group"
+        cpu_group_values = Reference(ws_dashboard, min_col=4, min_row=groups_data_start, max_row=groups_data_end)
+        cpu_group_cats = Reference(ws_dashboard, min_col=2, min_row=groups_data_start, max_row=groups_data_end)
+        cpu_group_chart.add_data(cpu_group_values)
+        cpu_group_chart.set_categories(cpu_group_cats)
+        cpu_group_chart.height = 10
+        cpu_group_chart.width = 15
+        ws_dashboard.add_chart(cpu_group_chart, f"I{groups_data_start - 1}")
+
+        mem_group_chart = BarChart()
+        mem_group_chart.title = "Average Memory by Host Group"
+        mem_group_chart.y_axis.title = "Memory Avg (%)"
+        mem_group_chart.x_axis.title = "Host Group"
+        mem_group_values = Reference(ws_dashboard, min_col=5, min_row=groups_data_start, max_row=groups_data_end)
+        mem_group_cats = Reference(ws_dashboard, min_col=2, min_row=groups_data_start, max_row=groups_data_end)
+        mem_group_chart.add_data(mem_group_values)
+        mem_group_chart.set_categories(mem_group_cats)
+        mem_group_chart.height = 10
+        mem_group_chart.width = 15
+        ws_dashboard.add_chart(mem_group_chart, f"T{groups_data_start - 1}")
+
 
     # 📊 Create summary by group sheet
     ws_groups = wb.create_sheet("By Host Groups", 1)
@@ -207,7 +263,7 @@ def generate_excel():
     group_row = 4
     for group_name, metrics in sorted(group_metrics.items()):
         # Group header
-        ws_groups.cell(group_row, 2, f"📁 {group_name}").font = Font(bold=True, size=12)
+        ws_groups.cell(group_row, 2, f"{group_name}").font = Font(bold=True, size=12)
         ws_groups.cell(group_row, 2).fill = GROUP_HEADER_FILL
         ws_groups.cell(group_row, 2).font = Font(color="FFFFFF", bold=True, size=12)
         ws_groups.merge_cells(f'B{group_row}:H{group_row}')
@@ -222,42 +278,48 @@ def generate_excel():
         ws_groups.cell(group_row, 7, len(metrics['mem']))
         group_row += 1
         
-        # Top 5 CPU in group
+        # Top 5 CPU in group - Header
+        ws_groups.cell(group_row, 2, "Top 5 CPU").font = Font(bold=True, size=10)
+        
+        # Top 5 Memory in group - Header (SAME ROW)
+        ws_groups.cell(group_row, 5, "Top 5 Memory").font = Font(bold=True, size=10)
+        group_row += 1
+        
+        cpu_start_row = group_row
+        mem_start_row = group_row  # SAME ROW
+        
+        # Top 5 CPU data
         if metrics['cpu']:
-            ws_groups.cell(group_row, 2, "Top 5 CPU").font = Font(bold=True, size=10)
-            group_row += 1
-            
             top_cpu = sorted(metrics['cpu'], key=lambda x: x[1], reverse=True)[:5]
-            for host, avg in top_cpu:
-                ws_groups.cell(group_row, 2, host)
-                cell = ws_groups.cell(group_row, 3, avg)
+            for idx, (host, avg) in enumerate(top_cpu):
+                current_row = cpu_start_row + idx
+                ws_groups.cell(current_row, 2, host)
+                cell = ws_groups.cell(current_row, 3, avg)
                 cell.number_format = '0.00'
                 if avg > 80:
                     cell.fill = PatternFill(start_color="FF6B6B", end_color="FF6B6B", fill_type="solid")
                 elif avg > 60:
                     cell.fill = PatternFill(start_color="FFD93D", end_color="FFD93D", fill_type="solid")
-                group_row += 1
         
-        # Top 5 Memory in group
+        # Top 5 Memory data (ALIGNED)
         if metrics['mem']:
-            ws_groups.cell(group_row, 5, "Top 5 Memory").font = Font(bold=True, size=10)
-            mem_start = group_row
-            group_row += 1
-            
             top_mem = sorted(metrics['mem'], key=lambda x: x[1], reverse=True)[:5]
-            for host, avg in top_mem:
-                ws_groups.cell(group_row, 5, host)
-                cell = ws_groups.cell(group_row, 6, avg)
+            for idx, (host, avg) in enumerate(top_mem):
+                current_row = mem_start_row + idx
+                ws_groups.cell(current_row, 5, host)
+                cell = ws_groups.cell(current_row, 6, avg)
                 cell.number_format = '0.00'
                 if avg > 80:
                     cell.fill = PatternFill(start_color="FF6B6B", end_color="FF6B6B", fill_type="solid")
                 elif avg > 60:
                     cell.fill = PatternFill(start_color="FFD93D", end_color="FFD93D", fill_type="solid")
-                group_row += 1
         
-        group_row += 2
+        # Move to next group (after the longest list)
+        max_items = max(len(metrics['cpu']), len(metrics['mem']), 5)
+        group_row = cpu_start_row + min(max_items, 3) + 2
 
-    # 📈 Create one sheet per host with charts
+
+    # Create one sheet per host with charts
     for csv_name, df in csv_data.items():
         host_name = csv_name.replace(".csv", "")
         ws_host = wb.create_sheet(title=host_name[:30])
@@ -306,14 +368,14 @@ def generate_excel():
             chart.legend = None
             ws_host.add_chart(chart, "H22")
 
-    # 📤 Save and upload
+    # Save and upload
     excel_output = io.BytesIO()
     wb.save(excel_output)
     filename = f"Zabbix_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     excel_blob_client = container_client.get_blob_client(filename)
     excel_blob_client.upload_blob(excel_output.getvalue(), overwrite=True)
 
-    print(f"✅ Excel '{filename}' uploaded with Dashboard, Groups analysis and individual host sheets")
+    print(f"Excel '{filename}' uploaded with Dashboard, Groups analysis and individual host sheets")
 
 
 if __name__ == "__main__":
