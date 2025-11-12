@@ -127,7 +127,7 @@ def generate_excel():
     row_start = 5
     for i, row in enumerate(stats, start=row_start):
         cell_label = ws_dashboard.cell(i, 2, row[0])
-        cell_value = ws_dashboard.cell(i, 3, row[1])
+        cell_value = ws_dashboard.cell(i, 4, row[1])
         cell_label.font = Font(bold=True)
         cell_value.font = Font(size=11)
 
@@ -199,7 +199,7 @@ def generate_excel():
     ws_dashboard.add_chart(mem_chart, f"T{cpu_start_row - 2}")  # adds space dynamically
 
     # HOST GROUPS CHARTS IN DASHBOARD
-    groups_chart_row = max(cpu_start_row + 13, mem_start_row + 13)
+    groups_chart_row = max(cpu_start_row + 17, mem_start_row + 17)
 
     # Prepare data for host groups charts
     group_stats = []
@@ -260,7 +260,7 @@ def generate_excel():
     ws_groups = wb.create_sheet("By Host Groups", 1)
     ws_groups['B2'] = "METRICS BY HOST GROUP"
     ws_groups['B2'].font = Font(size=14, bold=True, color="4472C4")
-    ws_groups.merge_cells('B2:H2')
+    ws_groups.merge_cells('B2:J2')
     
     group_row = 4
     for group_name, metrics in sorted(group_metrics.items()):
@@ -268,23 +268,23 @@ def generate_excel():
         ws_groups.cell(group_row, 2, f"{group_name}").font = Font(bold=True, size=12)
         ws_groups.cell(group_row, 2).fill = GROUP_HEADER_FILL
         ws_groups.cell(group_row, 2).font = Font(color="FFFFFF", bold=True, size=12)
-        ws_groups.merge_cells(f'B{group_row}:H{group_row}')
+        ws_groups.merge_cells(f'B{group_row}:J{group_row}')
         group_row += 1
         
         # Stats
         ws_groups.cell(group_row, 2, "Total Hosts:").font = Font(bold=True)
-        ws_groups.cell(group_row, 3, len(metrics['hosts']))
-        ws_groups.cell(group_row, 4, "CPU Metrics:").font = Font(bold=True)
-        ws_groups.cell(group_row, 5, len(metrics['cpu']))
-        ws_groups.cell(group_row, 6, "Memory Metrics:").font = Font(bold=True)
-        ws_groups.cell(group_row, 7, len(metrics['mem']))
+        ws_groups.cell(group_row, 4, len(metrics['hosts']))
+        ws_groups.cell(group_row, 5, "CPU Metrics:").font = Font(bold=True)
+        ws_groups.cell(group_row, 7, len(metrics['cpu']))
+        ws_groups.cell(group_row, 8, "Memory Metrics:").font = Font(bold=True)
+        ws_groups.cell(group_row, 10, len(metrics['mem']))
         group_row += 1
         
         # Top 5 CPU in group - Header
         ws_groups.cell(group_row, 2, "Top 5 CPU").font = Font(bold=True, size=10)
         
         # Top 5 Memory in group - Header (SAME ROW)
-        ws_groups.cell(group_row, 5, "Top 5 Memory").font = Font(bold=True, size=10)
+        ws_groups.cell(group_row, 6, "Top 5 Memory").font = Font(bold=True, size=10)
         group_row += 1
         
         cpu_start_row = group_row
@@ -296,7 +296,7 @@ def generate_excel():
             for idx, (host, avg) in enumerate(top_cpu):
                 current_row = cpu_start_row + idx
                 ws_groups.cell(current_row, 2, host)
-                cell = ws_groups.cell(current_row, 3, avg)
+                cell = ws_groups.cell(current_row, 4, avg)
                 cell.number_format = '0.00'
                 if avg > 80:
                     cell.fill = PatternFill(start_color="FF6B6B", end_color="FF6B6B", fill_type="solid")
@@ -308,8 +308,8 @@ def generate_excel():
             top_mem = sorted(metrics['mem'], key=lambda x: x[1], reverse=True)[:5]
             for idx, (host, avg) in enumerate(top_mem):
                 current_row = mem_start_row + idx
-                ws_groups.cell(current_row, 5, host)
-                cell = ws_groups.cell(current_row, 6, avg)
+                ws_groups.cell(current_row, 6, host)
+                cell = ws_groups.cell(current_row, 8, avg)
                 cell.number_format = '0.00'
                 if avg > 80:
                     cell.fill = PatternFill(start_color="FF6B6B", end_color="FF6B6B", fill_type="solid")
