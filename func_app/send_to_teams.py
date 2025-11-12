@@ -19,7 +19,7 @@ ONLY_LATEST_FILE = os.getenv('ONLY_LATEST_FILE', 'true').lower() == 'true'  # Sh
 def generate_container_sas(
     connection_string: str,
     container_name: str,
-    expiry_hours: int = 72
+    expiry_hours: int = 168
 ) -> tuple:
     """
     Generates a SAS token for the entire container with read-only permissions.
@@ -27,7 +27,7 @@ def generate_container_sas(
     Args:
         connection_string: Storage account connection string
         container_name: Container name
-        expiry_hours: Hours until token expiration (default: 72)
+        expiry_hours: Hours until token expiration (default: 168)
     
     Returns:
         Tuple (container_url, sas_token, expiration_date, account_name)
@@ -154,7 +154,7 @@ def send_to_teams_workflow(
     """
     
     if not webhook_url:
-        print("⚠️  Teams Workflow webhook is not configured")
+        print("Teams Workflow webhook is not configured")
         return False
     
     generation_date = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
@@ -173,19 +173,19 @@ def send_to_teams_workflow(
         
         full_message = f"""**📊 Zabbix Monitoring Report - Ready for Download**
 
-**ℹ️ Information:**
+**Information:**
 - Generated: {generation_date} UTC
 - Link expires: {expiry_str} UTC
 - Validity: {expiry_hours} hours
 
 {files_text}
 
-**📥 How to download:**
+**How to download:**
 1. Click on any "Download Excel File" link above
 2. The file will download automatically to your computer
 3. Open it in Microsoft Excel to view all charts and data
 
-⚠️ **Important:** Download links expire in {expiry_hours} hours
+**Important:** Download links expire in {expiry_hours} hours
 """
     else:
         # Spanish message - SIMPLIFIED
@@ -199,19 +199,19 @@ def send_to_teams_workflow(
         
         full_message = f"""**📊 Informe de Monitorización Zabbix - Listo para Descargar**
 
-**ℹ️ Información:**
+**Información:**
 - Generado: {generation_date} UTC
 - Enlaces expiran: {expiry_str} UTC
 - Validez: {expiry_hours} horas
 
 {files_text}
 
-**📥 Cómo descargar:**
+**Cómo descargar:**
 1. Haz clic en cualquier enlace "Descargar archivo Excel" de arriba
 2. El archivo se descargará automáticamente a tu ordenador
 3. Ábrelo en Microsoft Excel para ver todos los gráficos y datos
 
-⚠️ **Importante:** Los enlaces de descarga expiran en {expiry_hours} horas
+**Importante:** Los enlaces de descarga expiran en {expiry_hours} horas
 """
     
     payload = {
@@ -236,15 +236,15 @@ def send_to_teams_workflow(
         )
         
         if response.status_code == 202 or response.status_code == 200:
-            print("✅ Message sent successfully to Teams Workflow")
+            print("Message sent successfully to Teams Workflow")
             return True
         else:
-            print(f"❌ Error sending message to Teams. Status code: {response.status_code}")
+            print(f"Error sending message to Teams. Status code: {response.status_code}")
             print(f"   Response: {response.text}")
             return False
             
     except Exception as e:
-        print(f"❌ Error sending message to Teams Workflow: {e}")
+        print(f"Error sending message to Teams Workflow: {e}")
         return False
 
 
@@ -254,7 +254,7 @@ def main():
     connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
     
     if not connection_string:
-        print("❌ Error: Set the AZURE_STORAGE_CONNECTION_STRING environment variable")
+        print("Error: Set the AZURE_STORAGE_CONNECTION_STRING environment variable")
         return
     
     try:
@@ -267,20 +267,20 @@ def main():
         )
         
         # List available Excel files
-        print("📂 Searching for Excel files in container...")
+        print("Searching for Excel files in container...")
         files = list_container_files(connection_string, CONTAINER_NAME, only_latest=ONLY_LATEST_FILE)
         
         if files:
-            print(f"✅ Found {len(files)} Excel file(s)\n")
+            print(f"Found {len(files)} Excel file(s)\n")
             for i, file in enumerate(files, 1):
                 print(f"   {i}. {file}")
         else:
-            print("⚠️  No Excel files found in container\n")
+            print("No Excel files found in container\n")
         
         # Send to Teams if configured
         webhook_url = get_webhook_url()
         if webhook_url:
-            print("\n📤 Sending notification to Teams...")
+            print("\nSending notification to Teams...")
             result = send_to_teams_workflow(
                 webhook_url=webhook_url,
                 container_url=container_url,
@@ -293,12 +293,12 @@ def main():
                 language="es"
             )
             if result:
-                print("✅ Notification sent successfully")
+                print("Notification sent successfully")
         else:
-            print("\nℹ️  TEAMS_WEBHOOK_URL not configured")
+            print("\nTEAMS_WEBHOOK_URL not configured")
         
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nError: {e}")
         import traceback
         traceback.print_exc()
 
