@@ -717,8 +717,12 @@ filename = f"Zabbix_Report_20241021_143022.xlsx"
 ├── 📄 Dashboard
 │   ├── Summary statistics
 │   ├── Top 10 CPU (table + chart)
-│   └── Top 10 Memory (table + chart)
+│   ├── Top 10 Memory (table + chart)
+│   └── ...
 │
+├── 📄 By Host Groups
+│   ├── Top 5 CPU & Memory (all host groups)
+│   
 ├── 📄 All Hosts
 │   └── Complete metrics table (all hosts)
 │
@@ -773,7 +777,7 @@ Information:
 - Link expires: 2024-10-24 14:30:22 UTC
 - Validity: 72 hours
 
-Available Excel Reports:
+Available:
 
 1. **Zabbix_Report_20241021_143022.xlsx**
 [Download Excel File](https://stzabbixexporter.blob.core.windows.net/metrics/Zabbix_Report_20241021_143022.xlsx?sv=2024-05-04&st=2024-10-21T14:30:22Z&se=2024-10-24T14:30:22Z&sr=c&sp=rl&sig=...)
@@ -889,13 +893,14 @@ metrics/
 
 ### Terraform Providers
 ```hcl
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
+required_providers {
+  azurerm = {
+    source  = "hashicorp/azurerm"
+    version = "~> 4.0" 
+  }
+  azapi = {
+    source  = "azure/azapi"
+    version = "~> 2.0"  
   }
 }
 ```
