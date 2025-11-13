@@ -523,6 +523,28 @@ rm -rf terraform.tfstate*
 terraform init
 ```
 
+### If Key Vault keys are rotated
+Restart Azure Function
+```bash
+az functionapp restart --name <your-functionapp> --resource-group <your-rg>
+```
+
+Force a complete plan restart
+
+This doesn't always work well, but try:
+```bash
+az webapp restart --name <your-functionapp> --resource-group <your-rg>
+```
+
+Or even stop and restart:
+```bash
+az functionapp stop --name <your-functionapp> --resource-group <your-rg>
+
+sleep 10
+
+az functionapp start --name <your-functionapp> --resource-group <your-rg>
+```
+
 ---
 
 ### Best Practices
