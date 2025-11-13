@@ -864,9 +864,8 @@ metrics/
 
 ---
 
-#### Cost Optimization
+#### Cost breakdown (estimated)
 
-**Cost breakdown (estimated):**
 ```
 Function App (Flex Consumption):  $2-10/month
 Storage Account (Hot, LRS):       $1-3/month
