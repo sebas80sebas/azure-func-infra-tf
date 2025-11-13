@@ -1,0 +1,40 @@
+# terraform/terraform.tfvars.example
+# Copy this file to terraform.tfvars and fill in your actual values
+# DO NOT commit terraform.tfvars to Git (contains real credentials)
+
+# ============================================
+# REQUIRED: Azure Subscription
+# ============================================
+subscription_id = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+
+# ============================================
+# REQUIRED: Azure Region
+# ============================================
+location = "westeurope"
+
+# ============================================
+# REQUIRED: Resource Names
+# ============================================
+resource_group_name   = "rg_zabbix_exporter"
+storage_account_name  = "stzabbixexporter"     # Must be globally unique (3-24 chars, lowercase/numbers only)
+function_app_name     = "func-zabbix-exporter"
+key_vault_name        = "kv-zabbix-exporter"   # Must be globally unique (3-24 chars)
+
+# ============================================
+# REQUIRED: Zabbix API Configuration
+# ============================================
+zabbix_url      = "https://your-zabbix-server.com/api_jsonrpc.php"
+zabbix_user     = "your_zabbix_username"
+zabbix_password = "your_zabbix_password"
+
+# ============================================
+# REQUIRED: Microsoft Teams Webhook
+# ============================================
+teams_webhook_url = "https://prod-XX.westeurope.logic.azure.com:443/workflows/..."
+
+# ============================================
+# OPTIONAL: Advanced Configuration
+# (These have sensible defaults in Terraform)
+# ============================================
+# SAS_EXPIRY_HOURS  = "168"  # Default: 168 hours (7 days)
+# ONLY_LATEST_FILE  = "true" # Default: true
