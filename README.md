@@ -843,10 +843,10 @@ Process completed
 
 ### For End Users (Teams)
 
-- 📧 **2 Teams messages** (Spanish + English)
-- 🔗 **Direct download links** with SAS tokens
-- ⏰ **Expiration warning** (168 hours)
-- 📊 **Excel file** with:
+- **2 Teams messages** (Spanish + English)
+- **Direct download links** with SAS tokens
+- **Expiration warning** (168 hours)
+- **Excel file** with:
   - Executive dashboard
   - Top 10 rankings
   - Charts and visualizations
@@ -939,7 +939,7 @@ requests==2.31.0
 
 ---
 
-## 📞 Support
+## Support
 
 For issues or questions:
 1. Check Terraform outputs: `terraform output`
