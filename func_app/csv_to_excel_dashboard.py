@@ -13,8 +13,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 # Color styles used throughout the Excel workbook for headers and metric highlighting
 HEADER_FILL = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
-CPU_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid") # Light red for CPU metrics
-MEM_FILL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid") # Light green for Memory metrics
+FILL = PatternFill(start_color="a4f114", end_color="a4f114", fill_type="solid") # Light red for CPU metrics
 GROUP_HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid") # Blue for Group headers
 
 
@@ -125,13 +124,6 @@ def generate_excel():
                     'samples': row['Samples']
                 })
 
-            # Apply conditional formatting (fill color) to metric cell
-            metric_lower = row['Metric'].lower()
-
-            if 'cpu' in metric_lower and ('util' in metric_lower or 'usage' in metric_lower):
-                metric_cell.fill = CPU_FILL
-            elif 'mem' in metric_lower and ('utilization' in metric_lower or 'pavailable' in metric_lower):
-                metric_cell.fill = MEM_FILL
 
             row_count += 1
 
@@ -201,7 +193,7 @@ def generate_excel():
                     avg_val = float(metric['avg'])
                     if 'cpu' in metric_lower and ('util' in metric_lower or 'usage' in metric_lower):
                         cpu_values.append(avg_val)
-                    elif 'mem' in metric_lower and ('utilization' in metric_lower or 'pavailable' in metric_lower or 'total' in metric_lower):
+                    elif 'mem' in metric_lower and ('used' in metric_lower or 'total' in metric_lower):
                         mem_values.append(avg_val)
                 except:
                     pass
@@ -212,7 +204,7 @@ def generate_excel():
 
     if group_stats:
         # Group Summary Table Title (Columns B-E)
-        ws_dashboard.cell(groups_chart_row, 2, "METRICS BY HOST GROUP (Summary)").font = Font(bold=True, size=13, color="4472C4")
+        ws_dashboard.cell(groups_chart_row, 2, "METRICS BY HOST GROUP").font = Font(bold=True, size=13, color="4472C4")
         ws_dashboard.merge_cells(f'B{groups_chart_row}:E{groups_chart_row}')
         groups_chart_row += 2
 
@@ -231,16 +223,15 @@ def generate_excel():
             ws_dashboard.cell(i, 4, avg_cpu).number_format = '0.00'
             ws_dashboard.cell(i, 5, avg_mem).number_format = '0.00'
 
-        # groups_data_end = groups_data_start + len(group_stats) - 1 # Not strictly needed for logic, but kept for context
 
-    # --- Detailed Group Metrics Section (Starts at Column I) ---
+    # Group Metrics Section 
     group_col_start = 9 # Column I
     group_row = 2
 
-    # Detailed Section Title (Starts at I2 and merges across 8 columns)
+    # Detailed Section Title (Starts at I2 and merges across 7 columns)
     ws_dashboard.cell(group_row, group_col_start, "DETAILED METRICS BY HOST GROUP")
     ws_dashboard.cell(group_row, group_col_start).font = Font(size=14, bold=True, color="4472C4")
-    ws_dashboard.merge_cells(start_row=group_row, start_column=group_col_start, end_row=group_row, end_column=group_col_start + 7)
+    ws_dashboard.merge_cells(start_row=group_row, start_column=group_col_start, end_row=group_row, end_column=group_col_start + 6)
     group_row += 2
 
     # Loop through each aggregated group to display detailed data
@@ -250,7 +241,7 @@ def generate_excel():
         ws_dashboard.cell(group_row, group_col_start, f"{group_name}")
         ws_dashboard.cell(group_row, group_col_start).fill = GROUP_HEADER_FILL
         ws_dashboard.cell(group_row, group_col_start).font = Font(color="FFFFFF", bold=True, size=12)
-        ws_dashboard.merge_cells(start_row=group_row, start_column=group_col_start, end_row=group_row, end_column=group_col_start + 7)
+        ws_dashboard.merge_cells(start_row=group_row, start_column=group_col_start, end_row=group_row, end_column=group_col_start + 6)
         group_row += 1
 
         # Group Summary Info (Hosts and Total Metrics)
@@ -284,9 +275,9 @@ def generate_excel():
                 # Apply conditional formatting based on metric type
                 metric_lower = metric['metric'].lower()
                 if 'cpu' in metric_lower and ('util' in metric_lower or 'usage' in metric_lower):
-                    metric_cell.fill = CPU_FILL
-                elif 'mem' in metric_lower and ('utilization' in metric_lower or 'pavailable' in metric_lower or 'total' in metric_lower):
-                    metric_cell.fill = MEM_FILL
+                    metric_cell.fill = FILL
+                elif 'mem' in metric_lower and ('used' in metric_lower or 'total' in metric_lower):
+                    metric_cell.fill = FILL
 
                 group_row += 1
 
