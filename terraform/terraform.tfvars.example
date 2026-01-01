@@ -21,16 +21,25 @@ function_app_name     = "func-zabbix-exporter"
 key_vault_name        = "kv-zabbix-exporter"   # Must be globally unique (3-24 chars)
 
 # ============================================
-# REQUIRED: Zabbix API Configuration
-# ============================================
-zabbix_url      = "https://your-zabbix-server.com/api_jsonrpc.php"
-zabbix_user     = "your_zabbix_username"
-zabbix_password = "your_zabbix_password"
-
-# ============================================
 # REQUIRED: Microsoft Teams Webhook
 # ============================================
 teams_webhook_url = "https://prod-XX.westeurope.logic.azure.com:443/workflows/..."
+
+# ============================================
+# REQUIRED: Clients Configuration
+# ============================================
+clients = {
+  "client_id_1" = {
+    url  = "https://zabbix1.example.com/api_jsonrpc.php"
+    user = "username"
+    pass = "password"
+  },
+  "client_id_2" = {
+    url  = "https://zabbix2.example.com/api_jsonrpc.php"
+    user = "username"
+    pass = "password"
+  }
+}
 
 # ============================================
 # OPTIONAL: Advanced Configuration

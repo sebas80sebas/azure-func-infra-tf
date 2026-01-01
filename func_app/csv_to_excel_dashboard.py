@@ -17,7 +17,7 @@ FILL = PatternFill(start_color="a4f114", end_color="a4f114", fill_type="solid") 
 GROUP_HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid") # Blue for Group headers
 
 
-def generate_excel():
+def generate_excel(container_name):
     """
     Main function responsible for:
     1. Connecting to Azure Blob Storage and setting up the container.
@@ -37,7 +37,6 @@ def generate_excel():
         raise ValueError("AZURE_STORAGE_CONNECTION_STRING is not configured")
 
     blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-    container_name = "metrics"
     container_client = blob_service_client.get_container_client(container_name)
 
     # Attempt to create container (it will pass if container already exists)
@@ -296,4 +295,10 @@ def generate_excel():
 
 
 if __name__ == "__main__":
-    generate_excel()
+
+
+    CONTAINER_NAME = os.getenv("CONTAINER_NAME", "metrics")
+
+
+    generate_excel(CONTAINER_NAME)
+

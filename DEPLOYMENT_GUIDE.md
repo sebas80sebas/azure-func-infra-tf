@@ -1,10 +1,10 @@
-# Deployment Guide: Zabbix Metrics Azure Exporter
+# Deployment Guide: Multi-Client Zabbix Metrics Azure Exporter
 
-This guide provides three alternative methods to deploy the infrastructure required for the Zabbix Metrics Azure Exporter.
+This guide provides three alternative methods to deploy the infrastructure required for the multi-client Zabbix Metrics Azure Exporter.
 
-## 1. Automated Deployment with Terraform
+## 1. Automated Deployment with Terraform (Recommended)
 
-This is the recommended method for consistency and speed.
+This is the fastest and most reliable method to deploy the entire multi-client infrastructure.
 
 ### Version Information
 *   **Terraform Required Version:** `>= 1.0`
@@ -13,8 +13,8 @@ This is the recommended method for consistency and speed.
 
 ### Steps
 1.  Navigate to the `terraform/` directory.
-2.  Copy `terraform.tfvars.example` to `terraform.tfvars` and fill in your Zabbix and Teams credentials.
-3.  Execute the following commands:
+2.  Populate `terraform.tfvars` with your client list and credentials (the file is ignored by Git for security).
+3.  Execute the deployment:
     ```bash
     terraform init
     terraform plan
@@ -25,7 +25,7 @@ This is the recommended method for consistency and speed.
 
 ## 2. Manual Deployment via Azure CLI (CLI/ARM Alternative)
 
-If you prefer using the command line without Terraform, follow these steps using the Azure CLI.
+Use these commands if you prefer manual execution via terminal. All comments are provided in English.
 
 ### 2.1. Resource Group & Networking
 ```bash
@@ -48,13 +48,13 @@ az network vnet subnet create \
   --vnet-name vnet-zabbix-exporter \
   --address-prefix 10.0.0.0/24
 
-# Create 'functions' subnet with delegation and service endpoint
+# Create 'functions' subnet with delegation and service endpoints
 az network vnet subnet create \
   --name functions \
   --resource-group rg_zabbix_exporter \
   --vnet-name vnet-zabbix-exporter \
   --address-prefix 10.0.1.0/24 \
-  --service-endpoints Microsoft.Storage \
+  --service-endpoints Microsoft.Storage Microsoft.KeyVault \
   --delegations Microsoft.App/environments
 ```
 
@@ -67,7 +67,7 @@ LOCATION="westeurope"
 VNET_NAME="vnet-zabbix-exporter"
 SUBNET_NAME="functions"
 
-# Create Storage Account
+# Create the Storage Account
 az storage account create \
   --name $STORAGE_ACCOUNT \
   --resource-group $RESOURCE_GROUP \
@@ -81,7 +81,7 @@ az storage account create \
   --allow-shared-key-access true \
   --enable-large-file-share
 
-# Enable Retention Policies for Blob
+# Enable Retention Policies for Blobs
 az storage account blob-service-properties update \
   --account-name $STORAGE_ACCOUNT \
   --resource-group $RESOURCE_GROUP \
@@ -90,7 +90,7 @@ az storage account blob-service-properties update \
   --enable-container-delete-retention true \
   --container-delete-retention-days 7
 
-# Enable Retention Policy for File Share
+# Enable Retention Policy for File Shares
 az storage account file-service-properties update \
   --account-name $STORAGE_ACCOUNT \
   --resource-group $RESOURCE_GROUP \
@@ -103,23 +103,26 @@ az storage account update \
   --resource-group $RESOURCE_GROUP \
   --default-action Allow
 
-# Add VNet Subnet
+# Add VNet Subnet to Storage rules
 az storage account network-rule add \
   --account-name $STORAGE_ACCOUNT \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --subnet $SUBNET_NAME
 
-# Obtain Account Key
+# Obtain the Account Key
 ACCOUNT_KEY=$(az storage account keys list \
   --account-name $STORAGE_ACCOUNT \
   --resource-group $RESOURCE_GROUP \
   --query '[0].value' -o tsv)
 
-# Create Blob Containers
+# Create system containers
 az storage container create --name azure-webjobs-hosts --account-name $STORAGE_ACCOUNT --account-key $ACCOUNT_KEY --public-access off
 az storage container create --name azure-webjobs-secrets --account-name $STORAGE_ACCOUNT --account-key $ACCOUNT_KEY --public-access off
-az storage container create --name metrics --account-name $STORAGE_ACCOUNT --account-key $ACCOUNT_KEY --public-access off
+
+# Create metric containers per client (Repeat for each client)
+az storage container create --name metrics-dibaq --account-name $STORAGE_ACCOUNT --account-key $ACCOUNT_KEY --public-access off
+az storage container create --name metrics-saba --account-name $STORAGE_ACCOUNT --account-key $ACCOUNT_KEY --public-access off
 ```
 
 ### 2.3. Azure Key Vault
@@ -129,7 +132,7 @@ KEY_VAULT_NAME="kv-zabbix-exporter"
 TENANT_ID=$(az account show --query tenantId -o tsv)
 CURRENT_USER_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
 
-# Create Key Vault
+# Create the Key Vault
 az keyvault create \
   --name $KEY_VAULT_NAME \
   --resource-group $RESOURCE_GROUP \
@@ -147,14 +150,13 @@ az keyvault network-rule add \
   --vnet-name $VNET_NAME \
   --subnet $SUBNET_NAME
 
-# Access policy for current user
+# Set Access Policy for the current user (Deployment Admin)
 az keyvault set-policy \
   --name $KEY_VAULT_NAME \
   --object-id $CURRENT_USER_OBJECT_ID \
   --secret-permissions get list set delete purge recover
 
-# Access policy for Managed Identity (Defined in later steps)
-# az keyvault set-policy --name $KEY_VAULT_NAME --object-id $IDENTITY_PRINCIPAL_ID --secret-permissions get list
+# Note: Access policy for Managed Identity is added after identity creation
 ```
 
 ### 2.4. Azure Function & Identity Setup
@@ -163,7 +165,7 @@ az keyvault set-policy \
 FUNCTION_APP_NAME="func-zabbix-exporter"
 MANAGED_IDENTITY_NAME="func-zabbix-exporter-uami"
 
-# Create Managed Identity (User Assigned)
+# Create User Assigned Managed Identity
 az identity create \
   --name $MANAGED_IDENTITY_NAME \
   --resource-group $RESOURCE_GROUP \
@@ -173,16 +175,16 @@ az identity create \
 IDENTITY_ID=$(az identity show --name $MANAGED_IDENTITY_NAME --resource-group $RESOURCE_GROUP --query id -o tsv)
 IDENTITY_PRINCIPAL_ID=$(az identity show --name $MANAGED_IDENTITY_NAME --resource-group $RESOURCE_GROUP --query principalId -o tsv)
 
-# Apply Key Vault policy for the Managed Identity
+# Apply Key Vault Access Policy for the Managed Identity
 az keyvault set-policy --name $KEY_VAULT_NAME --object-id $IDENTITY_PRINCIPAL_ID --secret-permissions get list
 
-# Assign permissions to Managed Identity over Storage Account
+# Assign Storage permissions to the Managed Identity
 az role assignment create \
   --assignee $IDENTITY_PRINCIPAL_ID \
   --role "Storage Blob Data Owner" \
   --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/$STORAGE_ACCOUNT"
 
-# Create Application Insights (optional)
+# Create Application Insights
 APP_INSIGHTS_NAME="func-zabbix-exporter"
 az monitor app-insights component create \
   --app $APP_INSIGHTS_NAME \
@@ -196,14 +198,7 @@ APP_INSIGHTS_KEY=$(az monitor app-insights component show \
   --resource-group $RESOURCE_GROUP \
   --query connectionString -o tsv)
 
-# Obtain Subnet ID
-SUBNET_ID=$(az network vnet subnet show \
-  --resource-group $RESOURCE_GROUP \
-  --vnet-name $VNET_NAME \
-  --name $SUBNET_NAME \
-  --query id -o tsv)
-
-# Create Function App (Flex Consumption)
+# Create the Function App (Flex Consumption)
 az functionapp create \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
@@ -216,169 +211,83 @@ az functionapp create \
   --os-type linux \
   --flexconsumption-location $LOCATION
 
-# Configure instance memory size
+# Configure instance memory
 az functionapp update \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --set functionAppConfig.scaleAndConcurrency.instanceMemoryMB=2048
 
-# Configure Application Insights
+# Configure Application Insights setting
 az functionapp config appsettings set \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=$APP_INSIGHTS_KEY"
 
-# Integrate with VNet
+# Enable VNet Integration
 az functionapp vnet-integration add \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --vnet $VNET_NAME \
   --subnet $SUBNET_NAME
 
-# Enable VNet route all
+# Enable VNet route all for egress traffic
 az functionapp config set \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --vnet-route-all-enabled true
 
-# Disable basic publishing credentials (FTP and SCM)
-az functionapp deployment user set --user-name "" --password "" 2>/dev/null || true
+# Disable Basic Authentication for security (FTP/SCM)
 az resource update --resource-group $RESOURCE_GROUP --name ftp --resource-type basicPublishingCredentialsPolicies --namespace Microsoft.Web --parent sites/$FUNCTION_APP_NAME --set properties.allow=false
 az resource update --resource-group $RESOURCE_GROUP --name scm --resource-type basicPublishingCredentialsPolicies --namespace Microsoft.Web --parent sites/$FUNCTION_APP_NAME --set properties.allow=false
 
-# Configure CORS (allow Azure Portal)
+# Configure CORS for Azure Portal access
 az functionapp cors add \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --allowed-origins "https://portal.azure.com"
 ```
 
-### 2.5. Key Vault Secrets & Function Settings
+### 2.5. Multi-Client Configuration
+Repeat the following for each client to add their secrets and reference them in the Function App:
+
 ```bash
-# Set Secrets in Key Vault
-az keyvault secret set --vault-name $KEY_VAULT_NAME --name "ZABBIX-URL" --value "https://your-zabbix/api_jsonrpc.php"
-az keyvault secret set --vault-name $KEY_VAULT_NAME --name "ZABBIX-USER" --value "your-user"
-az keyvault secret set --vault-name $KEY_VAULT_NAME --name "ZABBIX-PASSWORD" --value "your-password"
-az keyvault secret set --vault-name $KEY_VAULT_NAME --name "TEAMS-WEBHOOK-URL" --value "your-webhook-url"
+# 1. Set Client Secrets in Key Vault
+az keyvault secret set --vault-name $KEY_VAULT_NAME --name "ZABBIX-URL-DIBAQ" --value "https://dibaq-monitoring.myclouddoor.com/"
+# ... Repeat for USER and PASSWORD
 
-# Obtain Connection String
-STORAGE_CONNECTION_STRING=$(az storage account show-connection-string \
-  --name $STORAGE_ACCOUNT \
-  --resource-group $RESOURCE_GROUP \
-  --query connectionString -o tsv)
+# 2. Get Secret IDs for references
+DIBAQ_URL_URI=$(az keyvault secret show --vault-name $KEY_VAULT_NAME --name "ZABBIX-URL-DIBAQ" --query id -o tsv)
 
-az keyvault secret set --vault-name $KEY_VAULT_NAME --name "AZURE-STORAGE-CONNECTION-STRING" --value "$STORAGE_CONNECTION_STRING"
-
-# Get URIs for Key Vault References
-ZABBIX_URL_URI=$(az keyvault secret show --vault-name $KEY_VAULT_NAME --name "ZABBIX-URL" --query id -o tsv)
-ZABBIX_USER_URI=$(az keyvault secret show --vault-name $KEY_VAULT_NAME --name "ZABBIX-USER" --query id -o tsv)
-ZABBIX_PASSWORD_URI=$(az keyvault secret show --vault-name $KEY_VAULT_NAME --name "ZABBIX-PASSWORD" --query id -o tsv)
-TEAMS_WEBHOOK_URI=$(az keyvault secret show --vault-name $KEY_VAULT_NAME --name "TEAMS-WEBHOOK-URL" --query id -o tsv)
-STORAGE_CONN_URI=$(az keyvault secret show --vault-name $KEY_VAULT_NAME --name "AZURE-STORAGE-CONNECTION-STRING" --query id -o tsv)
-
-# Configure Key Vault Reference Identity
-az functionapp config set \
-  --name $FUNCTION_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --generic-configurations "{\"keyVaultReferenceIdentity\":\"$IDENTITY_ID\"}"
-
-# Add Environment Variables to Function App with Key Vault References
+# 3. Update Function Settings
 az functionapp config appsettings set \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --settings \
-  CONTAINER_NAME="metrics" \
-  TEAMS_WEBHOOK_URL="@Microsoft.KeyVault(SecretUri=$TEAMS_WEBHOOK_URI)" \
-  AZURE_STORAGE_CONNECTION_STRING="@Microsoft.KeyVault(SecretUri=$STORAGE_CONN_URI)" \
-  ZABBIX_URL="@Microsoft.KeyVault(SecretUri=$ZABBIX_URL_URI)" \
-  ZABBIX_USER="@Microsoft.KeyVault(SecretUri=$ZABBIX_USER_URI)" \
-  ZABBIX_PASSWORD="@Microsoft.KeyVault(SecretUri=$ZABBIX_PASSWORD_URI)" \
-  SAS_EXPIRY_HOURS="168" \
-  ONLY_LATEST_FILE="true"
+  CLIENTS="dibaq,saba,..." \
+  ZABBIX_URL_DIBAQ="@Microsoft.KeyVault(SecretUri=$DIBAQ_URL_URI)"
 ```
 
 ---
 
 ## 3. Manual Deployment via Azure Portal
 
-For users who prefer a graphical interface.
-
-### 3.1. Resource Group & Networking
-1.  **Create Resource Group**:
-    *   Search for **Resource Groups** -> **Create**.
-    *   Project Details: `rg_zabbix_exporter`. Region: `West Europe`.
-2.  **Create Virtual Network**:
-    *   Search for **Virtual Networks** -> **Create**.
-    *   Name: `vnet-zabbix-exporter`.
-    *   Address Space: `10.0.0.0/16`.
-    *   **Subnets**:
-        *   `default`: `10.0.0.0/24`.
-        *   `functions`: `10.0.1.0/24`. Select **Subnet delegation**: `Microsoft.App/environments`. Enable **Service Endpoints**: `Microsoft.Storage` and `Microsoft.KeyVault`.
-
-### 3.2. Azure Storage Account
-1.  **Create Storage Account**:
-    *   Search for **Storage accounts** -> **Create**.
-    *   Name: `stzabbixexporter`. Performance: `Standard`. Redundancy: `LRS`.
-    *   **Advanced**: Ensure "Allow Shared Key access" is enabled.
-2.  **Data Protection**:
-    *   Enable **Soft delete for blobs** (7 days).
-    *   Enable **Soft delete for containers** (7 days).
-    *   Enable **Soft delete for file shares** (7 days).
-3.  **Networking**:
-    *   Connectivity method: "Public endpoint (selected networks)".
-    *   Add existing virtual network -> `vnet-zabbix-exporter` -> `functions` subnet.
-4.  **Create Containers**:
-    *   Navigate to **Containers** under Data Storage.
-    *   Create: `azure-webjobs-hosts`, `azure-webjobs-secrets`, and `metrics`. All with "Private" access level.
-
-### 3.3. Identity & Role Assignment
-1.  **Create User Assigned Managed Identity**:
-    *   Search for **Managed Identities** -> **Create**.
-    *   Name: `func-zabbix-exporter-uami`.
-2.  **Role Assignment**:
-    *   Go to your **Storage Account** -> **Access Control (IAM)** -> **Add role assignment**.
-    *   Role: `Storage Blob Data Owner`.
-    *   Assign access to: `Managed identity`. Select your identity: `func-zabbix-exporter-uami`.
-
-### 3.4. Azure Key Vault
-1.  **Create Key Vault**:
-    *   Search for **Key vaults** -> **Create**.
-    *   Name: `kv-zabbix-exporter`. Pricing tier: `Standard`.
-2.  **Access Configuration**:
-    *   Permission model: `Vault access policy`.
-    *   Add access policy for **yourself**: Full Secret management.
-    *   Add access policy for **Identity**: Select `func-zabbix-exporter-uami`. Secret permissions: `Get`, `List`.
-3.  **Networking**:
-    *   Connectivity method: "Public endpoint (selected networks)".
-    *   Add existing virtual network -> `vnet-zabbix-exporter` -> `functions` subnet.
-4.  **Secrets**:
-    *   Navigate to **Secrets** -> **Generate/Import**.
-    *   Create: `ZABBIX-URL`, `ZABBIX-USER`, `ZABBIX-PASSWORD`, `TEAMS-WEBHOOK-URL`, and `AZURE-STORAGE-CONNECTION-STRING`.
-
-### 3.5. Application Insights & Function App
-1.  **Create Application Insights**:
-    *   Search for **Application Insights** -> **Create**.
-    *   Name: `func-zabbix-exporter`. Application Type: `Web`.
-2.  **Create Function App**:
-    *   Search for **Function App** -> **Create**.
-    *   Hosting: `Flex Consumption`.
-    *   Runtime stack: `Python 3.12`. OS: `Linux`. Region: `West Europe`.
-    *   **Networking**: Enable **VNet integration** and select the `functions` subnet.
-3.  **Configure Function App**:
-    *   **Identity**: Settings -> Identity -> User assigned. Add `func-zabbix-exporter-uami`.
-    *   **Environment variables**: Settings -> Environment variables -> App settings.
-        *   Set `CONTAINER_NAME` = `metrics`.
-        *   Set Key Vault references for Zabbix and Storage using the format `@Microsoft.KeyVault(SecretUri=...)`.
-    *   **CORS**: Settings -> CORS. Add `https://portal.azure.com`.
-    *   **Deployment**: Under Configuration -> Authentication, disable "Basic Authentication" for FTP and SCM if possible (or via Resource Explorer).
+1.  **Resource Group**: Create `rg_zabbix_exporter` in `West Europe`.
+2.  **VNet**: Create `vnet-zabbix-exporter`. Add subnet `functions` with delegation to `Microsoft.App/environments` and Service Endpoints for `Storage` and `Key Vault`.
+3.  **Storage**: Create `stzabbixexporter`. Enable Soft Delete. Create containers: `azure-webjobs-hosts`, `azure-webjobs-secrets`, and `metrics-<client_id>` for each client.
+4.  **Identity**: Create a User Assigned Managed Identity. Give it `Storage Blob Data Owner` on the Storage Account.
+5.  **Key Vault**: Create `kv-zabbix-exporter`. Add access policies for yourself and the Managed Identity. Add secrets for each client.
+6.  **Function App**: Create using the **Flex Consumption** plan. Enable VNet Integration. Add the Managed Identity. Set Environment Variables using Key Vault references.
 
 ---
 
 ## 4. Power Automate Workflow
 
-To receive the notifications in Teams:
-1.  In Teams, go to **Workflows** -> **Create from blank**.
-2.  Trigger: **"When a Teams webhook request is received"**.
-3.  Copy the generated URL and save it as `TEAMS_WEBHOOK_URL` in your Azure Function settings (or Key Vault).
-4.  Action: **"Post a message in a chat or channel"**.
-5.  Message content: Use the dynamic expression `@{triggerBody()?['mensaje_completo']}`.
+Follow these steps to route notifications to different Teams chats:
+
+1.  **Trigger**: "When a Teams webhook request is received". Set to **Anyone**.
+2.  **Condition**: Check `triggerBody()?['client']`.
+    *   If equal to `client1` -> Post to Client1 Chat.
+    *   If equal to `client2` -> Post to Client2 Chat.
+3.  **Action**: Use "Post message in a chat or channel". Content: `triggerBody()?['full_message']`.
+
+```

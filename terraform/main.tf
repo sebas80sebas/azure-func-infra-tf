@@ -34,6 +34,15 @@ variable "subscription_id" {
   default     = "32f3c387-f40e-43fe-8888-001be33af10d"
 }
 
+variable "clients" {
+  description = "Map of clients and their Zabbix credentials. Define this in terraform.tfvars"
+  type = map(object({
+    url  = string
+    user = string
+    pass = string
+  }))
+}
+
 variable "location" {
   description = "Azure region"
   type        = string
@@ -182,7 +191,8 @@ resource "azurerm_storage_container" "webjobs_secrets" {
 }
 
 resource "azurerm_storage_container" "metrics" {
-  name                  = "metrics"
+  for_each              = var.clients
+  name                  = "metrics-${each.key}"
   storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
@@ -255,26 +265,29 @@ resource "azurerm_key_vault_access_policy" "function_app" {
   ]
 }
 
-# Secrets en Key Vault
+# Secrets en Key Vault per Client
 resource "azurerm_key_vault_secret" "zabbix_url" {
-  name         = "ZABBIX-URL"
-  value        = var.zabbix_url
+  for_each     = var.clients
+  name         = "ZABBIX-URL-${upper(each.key)}"
+  value        = each.value.url
   key_vault_id = azurerm_key_vault.main.id
 
   depends_on = [azurerm_key_vault_access_policy.terraform]
 }
 
 resource "azurerm_key_vault_secret" "zabbix_user" {
-  name         = "ZABBIX-USER"
-  value        = var.zabbix_user
+  for_each     = var.clients
+  name         = "ZABBIX-USER-${upper(each.key)}"
+  value        = each.value.user
   key_vault_id = azurerm_key_vault.main.id
 
   depends_on = [azurerm_key_vault_access_policy.terraform]
 }
 
 resource "azurerm_key_vault_secret" "zabbix_password" {
-  name         = "ZABBIX-PASSWORD"
-  value        = var.zabbix_password
+  for_each     = var.clients
+  name         = "ZABBIX-PASSWORD-${upper(each.key)}"
+  value        = each.value.pass
   key_vault_id = azurerm_key_vault.main.id
 
   depends_on = [azurerm_key_vault_access_policy.terraform]
@@ -376,52 +389,58 @@ resource "azapi_update_resource" "function_app_settings" {
   body = {
     properties = {
       siteConfig = {
-        appSettings = [
-          {
-            name  = "AzureWebJobsStorage"
-            value = azurerm_storage_account.main.primary_connection_string
-          },
-          {
-            name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
-            value = azurerm_application_insights.main.connection_string
-          },
-          {
-            name  = "CONTAINER_NAME"
-            value = "metrics"
-          },
-          {
-            name  = "TEAMS_WEBHOOK_URL"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.teams_webhook_url.versionless_id})"
-          },
-          {
-            name  = "AZURE_STORAGE_CONNECTION_STRING"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.storage_connection.versionless_id})"
-          },
-          {
-            name  = "ZABBIX_URL"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_url.versionless_id})"
-          },
-          {
-            name  = "ZABBIX_USER"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_user.versionless_id})"
-          },
-          {
-            name  = "ZABBIX_PASSWORD"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_password.versionless_id})"
-          },
-          {
-            name  = "SAS_EXPIRY_HOURS"
-            value = "168"
-          },
-          {
-            name  = "ONLY_LATEST_FILE"
-            value = "true"
-          },
-          {
-            name  = "FUNCTIONS_EXTENSION_VERSION"
-            value = "~4"
-          }
-        ]
+        appSettings = concat(
+          [
+            {
+              name  = "AzureWebJobsStorage"
+              value = azurerm_storage_account.main.primary_connection_string
+            },
+            {
+              name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+              value = azurerm_application_insights.main.connection_string
+            },
+            {
+              name  = "TEAMS_WEBHOOK_URL"
+              value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.teams_webhook_url.versionless_id})"
+            },
+            {
+              name  = "AZURE_STORAGE_CONNECTION_STRING"
+              value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.storage_connection.versionless_id})"
+            },
+            {
+              name  = "SAS_EXPIRY_HOURS"
+              value = "168"
+            },
+            {
+              name  = "ONLY_LATEST_FILE"
+              value = "true"
+            },
+            {
+              name  = "FUNCTIONS_EXTENSION_VERSION"
+              value = "~4"
+            },
+            {
+              name  = "CLIENTS"
+              value = join(",", keys(var.clients))
+            }
+          ],
+          flatten([
+            for client_name, client_data in var.clients : [
+              {
+                name  = "ZABBIX_URL_${upper(client_name)}"
+                value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_url[client_name].versionless_id})"
+              },
+              {
+                name  = "ZABBIX_USER_${upper(client_name)}"
+                value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_user[client_name].versionless_id})"
+              },
+              {
+                name  = "ZABBIX_PASSWORD_${upper(client_name)}"
+                value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.zabbix_password[client_name].versionless_id})"
+              }
+            ]
+          ])
+        )
       }
     }
   }

@@ -6,22 +6,16 @@ import os
 import json
 from azure.storage.blob import BlobServiceClient
 
-# ============================================================
-# Zabbix Configuration - retrieved from environment variables
-# ============================================================
-ZABBIX_URL = os.getenv("ZABBIX_URL")
-ZABBIX_USER = os.getenv("ZABBIX_USER")
-ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD")
-
 # Create a session with SSL verification enabled
 session = requests.Session()
 session.verify = True
 
-def zabbix_api(method, params, auth=None):
+def zabbix_api(url, method, params, auth=None):
     """
     Generic function to call any Zabbix API method.
     Handles request structure, errors, and JSON-RPC validation.
 
+    url: Zabbix API URL
     method: Zabbix API method name
     params: dictionary containing method parameters
     auth: authentication token (optional)
@@ -35,7 +29,7 @@ def zabbix_api(method, params, auth=None):
         "auth": auth
     }
 
-    response = session.post(ZABBIX_URL, headers=headers, json=payload)
+    response = session.post(url, headers=headers, json=payload)
     response.raise_for_status()  # raise HTTP errors
     result = response.json()
     
@@ -92,7 +86,7 @@ def get_unit_label(item_key):
     else:
         return ""
 
-def export_metrics():
+def export_metrics(zabbix_url, zabbix_user, zabbix_password, container_name):
     """
     Main execution function:
     - Connects to Azure Blob Storage
@@ -108,7 +102,6 @@ def export_metrics():
         raise ValueError("AZURE_STORAGE_CONNECTION_STRING is not configured")
     
     blob_service_client = BlobServiceClient.from_connection_string(connect_str)
-    container_name = "metrics"
     container_client = blob_service_client.get_container_client(container_name)
 
     # Create container if missing
@@ -118,18 +111,18 @@ def export_metrics():
     else:
         print(f"Container '{container_name}' already exists")
 
-    print("Authenticating to Zabbix...")
+    print(f"Authenticating to Zabbix at {zabbix_url}...")
 
     # Attempt user.login with modern and older parameter naming
     try:
-        auth_token = zabbix_api("user.login", {"user": ZABBIX_USER, "password": ZABBIX_PASSWORD})
+        auth_token = zabbix_api(zabbix_url, "user.login", {"user": zabbix_user, "password": zabbix_password})
     except:
-        auth_token = zabbix_api("user.login", {"username": ZABBIX_USER, "password": ZABBIX_PASSWORD})
+        auth_token = zabbix_api(zabbix_url, "user.login", {"username": zabbix_user, "password": zabbix_password})
 
     print("Authentication successful")
 
     # Retrieve Zabbix version to confirm API compatibility
-    version_info = zabbix_api("apiinfo.version", {})
+    version_info = zabbix_api(zabbix_url, "apiinfo.version", {})
     print(f"Zabbix version: {version_info}")
 
     # Define time range: last 30 days
@@ -154,7 +147,7 @@ def export_metrics():
 
     # Retrieve all host groups
     print("Getting host groups...")
-    host_groups = zabbix_api("hostgroup.get", {"output": ["groupid", "name"]}, auth_token)
+    host_groups = zabbix_api(zabbix_url, "hostgroup.get", {"output": ["groupid", "name"]}, auth_token)
     print(f"Found {len(host_groups)} host groups")
     
     # Prepare structure to store host group data
@@ -166,7 +159,7 @@ def export_metrics():
         }
 
     # Retrieve all hosts with their groups
-    hosts = zabbix_api("host.get", {
+    hosts = zabbix_api(zabbix_url, "host.get", {
         "output": ["hostid", "host", "name"],
         "selectGroups": ["groupid", "name"]
     }, auth_token)
@@ -189,7 +182,7 @@ def export_metrics():
                 hostgroup_data[group['groupid']]['hosts'].append(host_name)
 
         # Retrieve items belonging to this host
-        items = zabbix_api("item.get", {
+        items = zabbix_api(zabbix_url, "item.get", {
             "hostids": host_id,
             "output": ["itemid", "name", "key_", "value_type", "units"],
             "filter": {"key_": TARGET_KEYS}
@@ -215,7 +208,7 @@ def export_metrics():
 
             # Attempt trends first
             try:
-                trends = zabbix_api("trend.get", {
+                trends = zabbix_api(zabbix_url, "trend.get", {
                     "itemids": item_id,
                     "time_from": start_time,
                     "time_till": end_time,
@@ -254,7 +247,7 @@ def export_metrics():
             try:
                 # Determine correct history type
                 history_type = 0 if value_type == 0 else 3
-                history = zabbix_api("history.get", {
+                history = zabbix_api(zabbix_url, "history.get", {
                     "itemids": item_id,
                     "time_from": start_time,
                     "time_till": end_time,
@@ -310,9 +303,13 @@ def export_metrics():
     
     groups_blob = container_client.get_blob_client("_hostgroups_info.json")
     groups_blob.upload_blob(json.dumps(groups_info, indent=2), overwrite=True)
-    print("Host groups info saved")
+    print(f"Host groups info saved for {container_name}")
 
     print(f"\nHosts processed: {hosts_processed}, Hosts with data: {hosts_with_data}")
 
 if __name__ == "__main__":
-    export_metrics()
+    ZABBIX_URL = os.getenv("ZABBIX_URL")
+    ZABBIX_USER = os.getenv("ZABBIX_USER")
+    ZABBIX_PASSWORD = os.getenv("ZABBIX_PASSWORD")
+    CONTAINER_NAME = os.getenv("CONTAINER_NAME", "metrics")
+    export_metrics(ZABBIX_URL, ZABBIX_USER, ZABBIX_PASSWORD, CONTAINER_NAME)
