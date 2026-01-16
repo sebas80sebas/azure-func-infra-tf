@@ -282,10 +282,35 @@ az functionapp config appsettings set \
 
 ## 4. Power Automate Workflow
 
-Follow these steps to route notifications to different Teams chats:
+Follow these steps to set up the flow and route notifications to your specific Teams chats:
 
-1.  **Trigger**: "When a Teams webhook request is received". Set to **Anyone**.
-2.  **Condition**: Check `triggerBody()?['client']`.
-    *   If equal to `client1` -> Post to Client1 Chat.
-    *   If equal to `client2` -> Post to Client2 Chat.
-3.  **Action**: Use "Post message in a chat or channel". Content: `triggerBody()?['full_message']`.
+### Step 1: Trigger
+Select **"When a Teams webhook request is received"**.
+
+- Set **"Who can trigger the flow?"** to **Anyone**.
+- **Action Required**: Once saved, copy your unique HTTP URL and use it in your application settings.
+
+### Step 2: Condition
+Add a **Condition** step to filter by client using the following expression:
+```
+triggerBody()?['client']
+```
+
+### Step 3: Branching Logic
+Configure the condition branches as follows:
+
+- **If equal to `client1`** → Configure it to post in your specific Client 1 Chat.
+- **If equal to `client2`** → Configure it to post in your specific Client 2 Chat.
+
+### Step 4: Action
+Use the **"Post message in a chat or channel"** action.
+
+- **Content**: Use the expression `triggerBody()?['full_message']` to populate the message text.
+
+> [!IMPORTANT]  
+> Ensure you update the Chat IDs and the Webhook URL with your own environment values to make the workflow functional.
+
+For a more detailed step-by-step guide, including screenshots and advanced configuration, visit this repository: [Teams Webhook Workflow Documentation](https://github.com/sebas80sebas/teams-webhook-workflow)
+
+
+
